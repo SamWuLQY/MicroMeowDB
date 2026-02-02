@@ -18,10 +18,10 @@
 #define getpid() GetCurrentProcessId()
 #endif
 
-// 子系统名称映射
+// 子系统名称映射 - 与枚举顺序完全一致
 static const char *subsystem_names[] = {
     "Config",
-    "Error",
+    "Error", 
     "Logging",
     "Memory",
     "Resource",
@@ -33,7 +33,7 @@ static const char *subsystem_names[] = {
     "Security",
     "Transaction",
     "Network",
-    "Replication",
+    "Replication", 
     "Monitoring",
     "Audit",
     "Backup"
@@ -67,6 +67,13 @@ system_manager *system_init(const system_config *config) {
     
     system->initialized = true;
     global_system = system;
+    
+    #ifdef _WIN32
+        system->windows_process_id = GetCurrentProcessId();
+        system->process_handle = GetCurrentProcess();
+    #else
+        system->process_id = getpid();
+    #endif
     
     return system;
 }
@@ -227,7 +234,7 @@ bool system_register_subsystem(system_manager *system, subsystem_type type, cons
     return true;
 }
 
-// 初始化子系统
+// 初始化子系统 - 保持原有逻辑不变
 bool system_init_subsystem(system_manager *system, subsystem_type type) {
     if (!system || !system->initialized || type >= SUBSYSTEM_MAX) {
         return false;
@@ -238,13 +245,13 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         return true;
     }
     
-    // 子系统初始化逻辑
+    // 子系统初始化逻辑 - 保持原有代码不变
     switch (type) {
         case SUBSYSTEM_CONFIG:
             {
                 // 初始化配置系统
                 system_config *sys_config = (system_config *)system->config;
-                config_system *config = config_init(sys_config->config_file);
+                struct config_system *config = config_init(sys_config->config_file);
                 if (config) {
                     system_register_subsystem(system, SUBSYSTEM_CONFIG, "Config", config);
                 }
@@ -262,7 +269,7 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_LOGGING:
             {
                 // 初始化日志系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
                 void *logging_manager = logging_init(config);
                 if (logging_manager) {
                     system_register_subsystem(system, SUBSYSTEM_LOGGING, "Logging", logging_manager);
@@ -272,8 +279,8 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_MEMORY:
             {
                 // 初始化内存池
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                MemoryPool *pool = memory_pool_init(config);
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct MemoryPool *pool = memory_pool_init(config);
                 if (pool) {
                     system_register_subsystem(system, SUBSYSTEM_MEMORY, "Memory", pool);
                 }
@@ -282,7 +289,7 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_RESOURCE:
             {
                 // 初始化资源管理子系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
                 void *resource_manager = resource_manager_create(config);
                 if (resource_manager) {
                     system_register_subsystem(system, SUBSYSTEM_RESOURCE, "Resource", resource_manager);
@@ -292,8 +299,8 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_STORAGE:
             {
                 // 初始化存储引擎
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                StorageEngineManager *storage = storage_engine_manager_init(config);
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct StorageEngineManager *storage = storage_engine_manager_init(config);
                 if (storage) {
                     system_register_subsystem(system, SUBSYSTEM_STORAGE, "Storage", storage);
                 }
@@ -302,9 +309,9 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_METADATA:
             {
                 // 初始化元数据子系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
                 const char* metadata_dir = config_get_string(config, "metadata.metadata_dir", "./metadata");
-                MetadataManager *metadata_manager = metadata_manager_init(metadata_dir);
+                struct MetadataManager *metadata_manager = metadata_manager_init(metadata_dir);
                 if (metadata_manager) {
                     system_register_subsystem(system, SUBSYSTEM_METADATA, "Metadata", metadata_manager);
                 }
@@ -313,7 +320,7 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_INDEX:
             {
                 // 初始化索引子系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
                 void *index_manager = index_manager_init(config);
                 if (index_manager) {
                     system_register_subsystem(system, SUBSYSTEM_INDEX, "Index", index_manager);
@@ -323,8 +330,8 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_OPTIMIZER:
             {
                 // 初始化查询优化器子系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                MetadataManager *metadata = (MetadataManager *)system->subsystems[SUBSYSTEM_METADATA].instance;
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct MetadataManager *metadata = (struct MetadataManager *)system->subsystems[SUBSYSTEM_METADATA].instance;
                 void *optimizer = optimizer_create(config, metadata);
                 if (optimizer) {
                     system_register_subsystem(system, SUBSYSTEM_OPTIMIZER, "Optimizer", optimizer);
@@ -334,8 +341,8 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_PROCEDURE:
             {
                 // 初始化存储过程和触发器子系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                MetadataManager *metadata = (MetadataManager *)system->subsystems[SUBSYSTEM_METADATA].instance;
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct MetadataManager *metadata = (struct MetadataManager *)system->subsystems[SUBSYSTEM_METADATA].instance;
                 void *procedure_manager = procedure_manager_create(config, metadata);
                 if (procedure_manager) {
                     system_register_subsystem(system, SUBSYSTEM_PROCEDURE, "Procedure", procedure_manager);
@@ -345,7 +352,7 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_SECURITY:
             {
                 // 初始化安全子系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
                 void *security_manager = security_init(config);
                 if (security_manager) {
                     system_register_subsystem(system, SUBSYSTEM_SECURITY, "Security", security_manager);
@@ -355,7 +362,7 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_TRANSACTION:
             {
                 // 初始化事务子系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
                 void *transaction_manager = transaction_manager_init(config);
                 if (transaction_manager) {
                     system_register_subsystem(system, SUBSYSTEM_TRANSACTION, "Transaction", transaction_manager);
@@ -365,7 +372,7 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_NETWORK:
             {
                 // 初始化网络子系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
                 void *network_server = network_server_init(config);
                 if (network_server) {
                     system_register_subsystem(system, SUBSYSTEM_NETWORK, "Network", network_server);
@@ -375,7 +382,7 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_REPLICATION:
             {
                 // 初始化复制子系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
                 void *network_server = system->subsystems[SUBSYSTEM_NETWORK].instance;
                 void *replication_manager = replication_manager_create(config, network_server);
                 if (replication_manager) {
@@ -386,7 +393,7 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_MONITORING:
             {
                 // 初始化监控子系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
                 void *monitoring_manager = monitoring_init(config);
                 if (monitoring_manager) {
                     system_register_subsystem(system, SUBSYSTEM_MONITORING, "Monitoring", monitoring_manager);
@@ -396,13 +403,13 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_AUDIT:
             {
                 // 初始化审计子系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                AuditConfig *audit_config = (AuditConfig *)malloc(sizeof(AuditConfig));
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct AuditConfig *audit_config = (struct AuditConfig *)malloc(sizeof(struct AuditConfig));
                 if (audit_config) {
                     audit_config->enabled = config_get_bool(config, "audit.enabled", true);
                     audit_config->log_dir = config_get_string(config, "audit.log_dir", "./audit");
                     audit_config->log_file = config_get_string(config, "audit.log_file", "audit");
-                    audit_config->log_format = config_get_int(config, "audit.log_format", AUDIT_FORMAT_TEXT);
+                    audit_config->log_format = config_get_int(config, "audit.log_format", 0); // AUDIT_FORMAT_TEXT
                     audit_config->max_log_size = config_get_int(config, "audit.max_log_size", 100);
                     audit_config->max_log_files = config_get_int(config, "audit.max_log_files", 10);
                     audit_config->rotate = config_get_bool(config, "audit.rotate", true);
@@ -419,7 +426,7 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
                     audit_config->min_query_length = config_get_int(config, "audit.min_query_length", 0);
                     audit_config->max_query_length = config_get_int(config, "audit.max_query_length", 10240);
                     
-                    AuditManager *audit_manager = audit_manager_init(audit_config);
+                    void *audit_manager = audit_manager_init(audit_config);
                     if (audit_manager) {
                         system_register_subsystem(system, SUBSYSTEM_AUDIT, "Audit", audit_manager);
                     } else {
@@ -431,8 +438,8 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
         case SUBSYSTEM_BACKUP:
             {
                 // 初始化备份子系统
-                config_system *config = (config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                BackupConfig *backup_config = (BackupConfig *)malloc(sizeof(BackupConfig));
+                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                struct BackupConfig *backup_config = (struct BackupConfig *)malloc(sizeof(struct BackupConfig));
                 if (backup_config) {
                     backup_config->backup_dir = config_get_string(config, "backup.backup_dir", "./backups");
                     backup_config->max_backups = config_get_int(config, "backup.max_backups", 10);
@@ -440,10 +447,10 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
                     backup_config->compression_level = config_get_string(config, "backup.compression_level", "6");
                     backup_config->encrypt = config_get_bool(config, "backup.encrypt", false);
                     backup_config->encryption_key = config_get_string(config, "backup.encryption_key", NULL);
-                    backup_config->backup_type = config_get_int(config, "backup.backup_type", BACKUP_TYPE_FULL);
+                    backup_config->backup_type = config_get_int(config, "backup.backup_type", 0); // BACKUP_TYPE_FULL
                     backup_config->schedule = config_get_string(config, "backup.schedule", NULL);
                     
-                    BackupManager *backup_manager = backup_manager_init(backup_config);
+                    void *backup_manager = backup_manager_init(backup_config);
                     if (backup_manager) {
                         system_register_subsystem(system, SUBSYSTEM_BACKUP, "Backup", backup_manager);
                     } else {
