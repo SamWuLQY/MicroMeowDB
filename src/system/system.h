@@ -1,86 +1,48 @@
-#ifndef SYSTEM_H
-#define SYSTEM_H
+#ifndef MICROMEOW_SYSTEM_H
+#define MICROMEOW_SYSTEM_H
 
 #include <stdint.h>
 #include <stdbool.h>
 
-// 平台检测和兼容性处理
-#ifdef _WIN32
-    #include <windows.h>
-    #include <process.h>
-    #define getpid _getpid
-    #define pause() Sleep(1000)  // Windows下的暂停实现
-    
-    // 定义Linux信号常量
-    #ifndef SIGHUP
-        #define SIGHUP 1
-    #endif
-    #ifndef SIGUSR1
-        #define SIGUSR1 2
-    #endif
-    #ifndef SIGUSR2
-        #define SIGUSR2 3
-    #endif
-    #ifndef SIGTERM
-        #define SIGTERM 15
-    #endif
-    #ifndef SIGINT
-        #define SIGINT 2
-    #endif
-#else
-    #include <unistd.h>
-    #include <signal.h>
-    #include <sys/types.h>
-    #include <sys/wait.h>
-#endif
-
-// 子系统类型枚举 - 必须与system.c中的subsystem_names数组一致
+// 系统状态
 typedef enum {
-    SUBSYSTEM_CONFIG,
-    SUBSYSTEM_ERROR,
-    SUBSYSTEM_LOGGING,
-    SUBSYSTEM_MEMORY,
-    SUBSYSTEM_RESOURCE,
-    SUBSYSTEM_STORAGE,
-    SUBSYSTEM_METADATA,
-    SUBSYSTEM_INDEX,
-    SUBSYSTEM_OPTIMIZER,
-    SUBSYSTEM_PROCEDURE,
-    SUBSYSTEM_SECURITY,
-    SUBSYSTEM_TRANSACTION,
-    SUBSYSTEM_NETWORK,
-    SUBSYSTEM_REPLICATION,
-    SUBSYSTEM_MONITORING,
-    SUBSYSTEM_AUDIT,
-    SUBSYSTEM_BACKUP,
-    SUBSYSTEM_MAX
-} subsystem_type;
+    MM_SYSTEM_STATE_UNINITIALIZED,
+    MM_SYSTEM_STATE_INITIALIZING,
+    MM_SYSTEM_STATE_RUNNING,
+    MM_SYSTEM_STATE_SHUTTING_DOWN,
+    MM_SYSTEM_STATE_SHUTDOWN
+} mm_system_state;
 
-// 前置声明
-struct config_system;
-struct MetadataManager;
-struct MemoryPool;
-struct StorageEngineManager;
-struct AuditConfig;
-struct BackupConfig;
-
-// 系统状态枚举
+// 子系统类型
 typedef enum {
-    SYSTEM_STATE_UNINITIALIZED,
-    SYSTEM_STATE_INITIALIZING,
-    SYSTEM_STATE_RUNNING,
-    SYSTEM_STATE_SHUTTING_DOWN,
-    SYSTEM_STATE_SHUTDOWN
-} system_state;
+    MM_SUBSYSTEM_CONFIG,
+    MM_SUBSYSTEM_ERROR,
+    MM_SUBSYSTEM_LOGGING,
+    MM_SUBSYSTEM_MEMORY,
+    MM_SUBSYSTEM_RESOURCE,
+    MM_SUBSYSTEM_STORAGE,
+    MM_SUBSYSTEM_METADATA,
+    MM_SUBSYSTEM_INDEX,
+    MM_SUBSYSTEM_OPTIMIZER,
+    MM_SUBSYSTEM_PROCEDURE,
+    MM_SUBSYSTEM_SECURITY,
+    MM_SUBSYSTEM_TRANSACTION,
+    MM_SUBSYSTEM_NETWORK,
+    MM_SUBSYSTEM_REPLICATION,
+    MM_SUBSYSTEM_MONITORING,
+    MM_SUBSYSTEM_AUDIT,
+    MM_SUBSYSTEM_BACKUP,
+    MM_SUBSYSTEM_MAX
+} mm_subsystem_type;
 
 // 子系统结构
 typedef struct {
-    subsystem_type type;
+    mm_subsystem_type type;
     const char *name;
     bool initialized;
     bool started;
     void *instance;
-} subsystem;
+} mm_subsystem;
 
 // 系统配置结构
 typedef struct {
@@ -89,75 +51,55 @@ typedef struct {
     char *log_dir;
     bool daemonize;
     char *pid_file;
-} system_config;
+} mm_system_config;
 
-// 系统管理器结构
+// 系统结构
 typedef struct {
-    system_state state;
-    subsystem subsystems[SUBSYSTEM_MAX];
+    mm_system_state state;
+    mm_subsystem subsystems[MM_SUBSYSTEM_MAX];
     uint64_t start_time;
     uint64_t shutdown_time;
     bool initialized;
-    const system_config *config;
-    
-    // 平台特定字段
-    #ifdef _WIN32
-        HANDLE process_handle;
-        DWORD windows_process_id;
-    #else
-        pid_t process_id;
-    #endif
-} system_manager;
-
-// 全局系统管理器实例 - 修改名称避免冲突
-extern system_manager *g_system_manager;
-
-// 函数声明
-#ifdef __cplusplus
-extern "C" {
-#endif
+    const mm_system_config *config;
+} mm_system_manager;
 
 // 初始化系统管理器
-system_manager *system_init(const system_config *config);
+mm_system_manager *mm_system_init(const mm_system_config *config);
 
 // 销毁系统管理器
-void system_destroy(system_manager *system);
+void mm_system_destroy(mm_system_manager *system_mgr);
 
 // 启动系统
-bool system_start(system_manager *system);
+bool mm_system_start(mm_system_manager *system_mgr);
 
 // 关闭系统
-bool system_shutdown(system_manager *system);
+bool mm_system_shutdown(mm_system_manager *system_mgr);
 
 // 获取系统状态
-system_state system_get_state(system_manager *system);
+mm_system_state mm_system_get_state(mm_system_manager *system_mgr);
 
 // 获取子系统状态
-bool system_get_subsystem_state(system_manager *system, subsystem_type type, bool *initialized, bool *started);
+bool mm_system_get_subsystem_state(mm_system_manager *system_mgr, mm_subsystem_type type, bool *initialized, bool *started);
 
 // 注册子系统
-bool system_register_subsystem(system_manager *system, subsystem_type type, const char *name, void *instance);
+bool mm_system_register_subsystem(mm_system_manager *system_mgr, mm_subsystem_type type, const char *name, void *instance);
 
 // 初始化子系统
-bool system_init_subsystem(system_manager *system, subsystem_type type);
+bool mm_system_init_subsystem(mm_system_manager *system_mgr, mm_subsystem_type type);
 
 // 启动子系统
-bool system_start_subsystem(system_manager *system, subsystem_type type);
+bool mm_system_start_subsystem(mm_system_manager *system_mgr, mm_subsystem_type type);
 
 // 停止子系统
-bool system_stop_subsystem(system_manager *system, subsystem_type type);
+bool mm_system_stop_subsystem(mm_system_manager *system_mgr, mm_subsystem_type type);
 
 // 检查系统健康状态
-bool system_check_health(system_manager *system);
+bool mm_system_check_health(mm_system_manager *system_mgr);
 
 // 获取系统运行时间
-uint64_t system_get_uptime(system_manager *system);
+uint64_t mm_system_get_uptime(mm_system_manager *system_mgr);
 
 // 处理系统信号
-void system_handle_signal(int signal);
+void mm_system_handle_signal(int signal);
 
-#ifdef __cplusplus
-}
-#endif
-
-#endif // SYSTEM_H
+#endif // MICROMEOW_SYSTEM_H
