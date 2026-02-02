@@ -13,6 +13,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#define getpid() GetCurrentProcessId()
+#endif
 
 // 子系统名称映射
 static const char *subsystem_names[] = {
