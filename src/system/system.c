@@ -13,16 +13,34 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+// Windows 兼容性定义
 #ifdef _WIN32
-#include <windows.h>
-#define getpid() GetCurrentProcessId()
+#ifndef SIGHUP
+#define SIGHUP 1
+#endif
+#ifndef SIGUSR1
+#define SIGUSR1 2
+#endif
+#ifndef SIGUSR2
+#define SIGUSR2 3
+#endif
+#ifndef SIGINT
+#define SIGINT 2
+#endif
+#ifndef SIGTERM
+#define SIGTERM 15
+#endif
+#ifndef getpid
+#define getpid() 0
+#endif
 #endif
 
-// 子系统名称映射 - 与枚举顺序完全一致
+// 子系统名称映射
 static const char *subsystem_names[] = {
     "Config",
-    "Error", 
-    "Logging",
+    "Error",
+    "Logging", 
     "Memory",
     "Resource",
     "Storage",
@@ -33,383 +51,376 @@ static const char *subsystem_names[] = {
     "Security",
     "Transaction",
     "Network",
-    "Replication", 
+    "Replication",
     "Monitoring",
     "Audit",
     "Backup"
 };
 
 // 全局系统管理器实例
-static system_manager *global_system = NULL;
+static mm_system_manager *global_mm_system = NULL;
 
 // 初始化系统管理器
-system_manager *system_init(const system_config *config) {
-    system_manager *system = (system_manager *)malloc(sizeof(system_manager));
-    if (!system) {
+mm_system_manager *mm_system_init(const mm_system_config *config) {
+    mm_system_manager *system_mgr = (mm_system_manager *)malloc(sizeof(mm_system_manager));
+    if (!system_mgr) {
         return NULL;
     }
     
     // 初始化系统状态
-    system->state = SYSTEM_STATE_UNINITIALIZED;
-    system->start_time = 0;
-    system->shutdown_time = 0;
-    system->initialized = false;
-    system->config = config;
+    system_mgr->state = MM_SYSTEM_STATE_UNINITIALIZED;
+    system_mgr->start_time = 0;
+    system_mgr->shutdown_time = 0;
+    system_mgr->initialized = false;
+    system_mgr->config = config;
     
     // 初始化子系统
-    for (int i = 0; i < SUBSYSTEM_MAX; i++) {
-        system->subsystems[i].type = (subsystem_type)i;
-        system->subsystems[i].name = subsystem_names[i];
-        system->subsystems[i].initialized = false;
-        system->subsystems[i].started = false;
-        system->subsystems[i].instance = NULL;
+    for (int i = 0; i < MM_SUBSYSTEM_MAX; i++) {
+        system_mgr->subsystems[i].type = (mm_subsystem_type)i;
+        system_mgr->subsystems[i].name = subsystem_names[i];
+        system_mgr->subsystems[i].initialized = false;
+        system_mgr->subsystems[i].started = false;
+        system_mgr->subsystems[i].instance = NULL;
     }
     
-    system->initialized = true;
-    global_system = system;
+    system_mgr->initialized = true;
+    global_mm_system = system_mgr;
     
-    #ifdef _WIN32
-        system->windows_process_id = GetCurrentProcessId();
-        system->process_handle = GetCurrentProcess();
-    #else
-        system->process_id = getpid();
-    #endif
-    
-    return system;
+    return system_mgr;
 }
 
 // 销毁系统管理器
-void system_destroy(system_manager *system) {
-    if (!system) {
+void mm_system_destroy(mm_system_manager *system_mgr) {
+    if (!system_mgr) {
         return;
     }
     
     // 确保系统已关闭
-    if (system->state == SYSTEM_STATE_RUNNING) {
-        system_shutdown(system);
+    if (system_mgr->state == MM_SYSTEM_STATE_RUNNING) {
+        mm_system_shutdown(system_mgr);
     }
     
-    system->initialized = false;
+    system_mgr->initialized = false;
     
-    if (global_system == system) {
-        global_system = NULL;
+    if (global_mm_system == system_mgr) {
+        global_mm_system = NULL;
     }
     
-    free(system);
+    free(system_mgr);
 }
 
 // 启动系统
-bool system_start(system_manager *system) {
-    if (!system || !system->initialized) {
+bool mm_system_start(mm_system_manager *system_mgr) {
+    if (!system_mgr || !system_mgr->initialized) {
         return false;
     }
     
-    if (system->state != SYSTEM_STATE_UNINITIALIZED) {
+    if (system_mgr->state != MM_SYSTEM_STATE_UNINITIALIZED) {
         return false;
     }
     
-    system->state = SYSTEM_STATE_INITIALIZING;
+    system_mgr->state = MM_SYSTEM_STATE_INITIALIZING;
     
     // 初始化子系统（按依赖顺序）
-    subsystem_type init_order[] = {
-        SUBSYSTEM_CONFIG,
-        SUBSYSTEM_ERROR,
-        SUBSYSTEM_LOGGING,
-        SUBSYSTEM_MEMORY,
-        SUBSYSTEM_RESOURCE,
-        SUBSYSTEM_STORAGE,
-        SUBSYSTEM_METADATA,
-        SUBSYSTEM_INDEX,
-        SUBSYSTEM_OPTIMIZER,
-        SUBSYSTEM_PROCEDURE,
-        SUBSYSTEM_SECURITY,
-        SUBSYSTEM_TRANSACTION,
-        SUBSYSTEM_NETWORK,
-        SUBSYSTEM_REPLICATION,
-        SUBSYSTEM_MONITORING,
-        SUBSYSTEM_AUDIT,
-        SUBSYSTEM_BACKUP
+    mm_subsystem_type init_order[] = {
+        MM_SUBSYSTEM_CONFIG,
+        MM_SUBSYSTEM_ERROR,
+        MM_SUBSYSTEM_LOGGING,
+        MM_SUBSYSTEM_MEMORY,
+        MM_SUBSYSTEM_RESOURCE,
+        MM_SUBSYSTEM_STORAGE,
+        MM_SUBSYSTEM_METADATA,
+        MM_SUBSYSTEM_INDEX,
+        MM_SUBSYSTEM_OPTIMIZER,
+        MM_SUBSYSTEM_PROCEDURE,
+        MM_SUBSYSTEM_SECURITY,
+        MM_SUBSYSTEM_TRANSACTION,
+        MM_SUBSYSTEM_NETWORK,
+        MM_SUBSYSTEM_REPLICATION,
+        MM_SUBSYSTEM_MONITORING,
+        MM_SUBSYSTEM_AUDIT,
+        MM_SUBSYSTEM_BACKUP
     };
     
-    for (int i = 0; i < SUBSYSTEM_MAX; i++) {
-        subsystem_type type = init_order[i];
-        if (!system_init_subsystem(system, type)) {
-            system->state = SYSTEM_STATE_SHUTDOWN;
+    for (int i = 0; i < MM_SUBSYSTEM_MAX; i++) {
+        mm_subsystem_type type = init_order[i];
+        if (!mm_system_init_subsystem(system_mgr, type)) {
+            system_mgr->state = MM_SYSTEM_STATE_SHUTDOWN;
             return false;
         }
     }
     
     // 启动子系统
-    for (int i = 0; i < SUBSYSTEM_MAX; i++) {
-        subsystem_type type = init_order[i];
-        if (!system_start_subsystem(system, type)) {
-            system->state = SYSTEM_STATE_SHUTDOWN;
+    for (int i = 0; i < MM_SUBSYSTEM_MAX; i++) {
+        mm_subsystem_type type = init_order[i];
+        if (!mm_system_start_subsystem(system_mgr, type)) {
+            system_mgr->state = MM_SYSTEM_STATE_SHUTDOWN;
             return false;
         }
     }
     
-    system->state = SYSTEM_STATE_RUNNING;
-    system->start_time = (uint64_t)time(NULL);
+    system_mgr->state = MM_SYSTEM_STATE_RUNNING;
+    system_mgr->start_time = (uint64_t)time(NULL);
     
     return true;
 }
 
 // 关闭系统
-bool system_shutdown(system_manager *system) {
-    if (!system || !system->initialized) {
+bool mm_system_shutdown(mm_system_manager *system_mgr) {
+    if (!system_mgr || !system_mgr->initialized) {
         return false;
     }
     
-    if (system->state != SYSTEM_STATE_RUNNING) {
+    if (system_mgr->state != MM_SYSTEM_STATE_RUNNING) {
         return false;
     }
     
-    system->state = SYSTEM_STATE_SHUTTING_DOWN;
+    system_mgr->state = MM_SYSTEM_STATE_SHUTTING_DOWN;
     
     // 停止子系统（按相反依赖顺序）
-    subsystem_type stop_order[] = {
-        SUBSYSTEM_BACKUP,
-        SUBSYSTEM_AUDIT,
-        SUBSYSTEM_MONITORING,
-        SUBSYSTEM_REPLICATION,
-        SUBSYSTEM_NETWORK,
-        SUBSYSTEM_TRANSACTION,
-        SUBSYSTEM_SECURITY,
-        SUBSYSTEM_PROCEDURE,
-        SUBSYSTEM_OPTIMIZER,
-        SUBSYSTEM_INDEX,
-        SUBSYSTEM_METADATA,
-        SUBSYSTEM_STORAGE,
-        SUBSYSTEM_RESOURCE,
-        SUBSYSTEM_MEMORY,
-        SUBSYSTEM_LOGGING,
-        SUBSYSTEM_ERROR,
-        SUBSYSTEM_CONFIG
+    mm_subsystem_type stop_order[] = {
+        MM_SUBSYSTEM_BACKUP,
+        MM_SUBSYSTEM_AUDIT,
+        MM_SUBSYSTEM_MONITORING,
+        MM_SUBSYSTEM_REPLICATION,
+        MM_SUBSYSTEM_NETWORK,
+        MM_SUBSYSTEM_TRANSACTION,
+        MM_SUBSYSTEM_SECURITY,
+        MM_SUBSYSTEM_PROCEDURE,
+        MM_SUBSYSTEM_OPTIMIZER,
+        MM_SUBSYSTEM_INDEX,
+        MM_SUBSYSTEM_METADATA,
+        MM_SUBSYSTEM_STORAGE,
+        MM_SUBSYSTEM_RESOURCE,
+        MM_SUBSYSTEM_MEMORY,
+        MM_SUBSYSTEM_LOGGING,
+        MM_SUBSYSTEM_ERROR,
+        MM_SUBSYSTEM_CONFIG
     };
     
-    for (int i = 0; i < SUBSYSTEM_MAX; i++) {
-        subsystem_type type = stop_order[i];
-        system_stop_subsystem(system, type);
+    for (int i = 0; i < MM_SUBSYSTEM_MAX; i++) {
+        mm_subsystem_type type = stop_order[i];
+        mm_system_stop_subsystem(system_mgr, type);
     }
     
-    system->state = SYSTEM_STATE_SHUTDOWN;
-    system->shutdown_time = (uint64_t)time(NULL);
+    system_mgr->state = MM_SYSTEM_STATE_SHUTDOWN;
+    system_mgr->shutdown_time = (uint64_t)time(NULL);
     
     return true;
 }
 
 // 获取系统状态
-system_state system_get_state(system_manager *system) {
-    if (!system || !system->initialized) {
-        return SYSTEM_STATE_UNINITIALIZED;
+mm_system_state mm_system_get_state(mm_system_manager *system_mgr) {
+    if (!system_mgr || !system_mgr->initialized) {
+        return MM_SYSTEM_STATE_UNINITIALIZED;
     }
-    return system->state;
+    return system_mgr->state;
 }
 
 // 获取子系统状态
-bool system_get_subsystem_state(system_manager *system, subsystem_type type, bool *initialized, bool *started) {
-    if (!system || !system->initialized || type >= SUBSYSTEM_MAX) {
+bool mm_system_get_subsystem_state(mm_system_manager *system_mgr, mm_subsystem_type type, bool *initialized, bool *started) {
+    if (!system_mgr || !system_mgr->initialized || type >= MM_SUBSYSTEM_MAX) {
         return false;
     }
     
     if (initialized) {
-        *initialized = system->subsystems[type].initialized;
+        *initialized = system_mgr->subsystems[type].initialized;
     }
     if (started) {
-        *started = system->subsystems[type].started;
+        *started = system_mgr->subsystems[type].started;
     }
     
     return true;
 }
 
 // 注册子系统
-bool system_register_subsystem(system_manager *system, subsystem_type type, const char *name, void *instance) {
-    if (!system || !system->initialized || type >= SUBSYSTEM_MAX) {
+bool mm_system_register_subsystem(mm_system_manager *system_mgr, mm_subsystem_type type, const char *name, void *instance) {
+    if (!system_mgr || !system_mgr->initialized || type >= MM_SUBSYSTEM_MAX) {
         return false;
     }
     
-    system->subsystems[type].name = name ? name : subsystem_names[type];
-    system->subsystems[type].instance = instance;
+    system_mgr->subsystems[type].name = name ? name : subsystem_names[type];
+    system_mgr->subsystems[type].instance = instance;
     
     return true;
 }
 
-// 初始化子系统 - 保持原有逻辑不变
-bool system_init_subsystem(system_manager *system, subsystem_type type) {
-    if (!system || !system->initialized || type >= SUBSYSTEM_MAX) {
+// 初始化子系统
+bool mm_system_init_subsystem(mm_system_manager *system_mgr, mm_subsystem_type type) {
+    if (!system_mgr || !system_mgr->initialized || type >= MM_SUBSYSTEM_MAX) {
         return false;
     }
     
-    subsystem *subsys = &system->subsystems[type];
+    mm_subsystem *subsys = &system_mgr->subsystems[type];
     if (subsys->initialized) {
         return true;
     }
     
-    // 子系统初始化逻辑 - 保持原有代码不变
+    // 子系统初始化逻辑
     switch (type) {
-        case SUBSYSTEM_CONFIG:
+        case MM_SUBSYSTEM_CONFIG:
             {
                 // 初始化配置系统
-                system_config *sys_config = (system_config *)system->config;
-                struct config_system *config = config_init(sys_config->config_file);
+                mm_system_config *sys_config = (mm_system_config *)system_mgr->config;
+                config_system *config = config_init(sys_config->config_file);
                 if (config) {
-                    system_register_subsystem(system, SUBSYSTEM_CONFIG, "Config", config);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_CONFIG, "Config", config);
                 }
             }
             break;
-        case SUBSYSTEM_ERROR:
+        case MM_SUBSYSTEM_ERROR:
             {
                 // 初始化错误处理系统
                 void *error_manager = error_init();
                 if (error_manager) {
-                    system_register_subsystem(system, SUBSYSTEM_ERROR, "Error", error_manager);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_ERROR, "Error", error_manager);
                 }
             }
             break;
-        case SUBSYSTEM_LOGGING:
+        case MM_SUBSYSTEM_LOGGING:
             {
                 // 初始化日志系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
                 void *logging_manager = logging_init(config);
                 if (logging_manager) {
-                    system_register_subsystem(system, SUBSYSTEM_LOGGING, "Logging", logging_manager);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_LOGGING, "Logging", logging_manager);
                 }
             }
             break;
-        case SUBSYSTEM_MEMORY:
+        case MM_SUBSYSTEM_MEMORY:
             {
                 // 初始化内存池
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                struct MemoryPool *pool = memory_pool_init(config);
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
+                MemoryPool *pool = memory_pool_init(config);
                 if (pool) {
-                    system_register_subsystem(system, SUBSYSTEM_MEMORY, "Memory", pool);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_MEMORY, "Memory", pool);
                 }
             }
             break;
-        case SUBSYSTEM_RESOURCE:
+        case MM_SUBSYSTEM_RESOURCE:
             {
                 // 初始化资源管理子系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
                 void *resource_manager = resource_manager_create(config);
                 if (resource_manager) {
-                    system_register_subsystem(system, SUBSYSTEM_RESOURCE, "Resource", resource_manager);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_RESOURCE, "Resource", resource_manager);
                 }
             }
             break;
-        case SUBSYSTEM_STORAGE:
+        case MM_SUBSYSTEM_STORAGE:
             {
                 // 初始化存储引擎
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                struct StorageEngineManager *storage = storage_engine_manager_init(config);
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
+                StorageEngineManager *storage = storage_engine_manager_init(config);
                 if (storage) {
-                    system_register_subsystem(system, SUBSYSTEM_STORAGE, "Storage", storage);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_STORAGE, "Storage", storage);
                 }
             }
             break;
-        case SUBSYSTEM_METADATA:
+        case MM_SUBSYSTEM_METADATA:
             {
                 // 初始化元数据子系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
                 const char* metadata_dir = config_get_string(config, "metadata.metadata_dir", "./metadata");
-                struct MetadataManager *metadata_manager = metadata_manager_init(metadata_dir);
+                MetadataManager *metadata_manager = metadata_manager_init(metadata_dir);
                 if (metadata_manager) {
-                    system_register_subsystem(system, SUBSYSTEM_METADATA, "Metadata", metadata_manager);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_METADATA, "Metadata", metadata_manager);
                 }
             }
             break;
-        case SUBSYSTEM_INDEX:
+        case MM_SUBSYSTEM_INDEX:
             {
                 // 初始化索引子系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
                 void *index_manager = index_manager_init(config);
                 if (index_manager) {
-                    system_register_subsystem(system, SUBSYSTEM_INDEX, "Index", index_manager);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_INDEX, "Index", index_manager);
                 }
             }
             break;
-        case SUBSYSTEM_OPTIMIZER:
+        case MM_SUBSYSTEM_OPTIMIZER:
             {
                 // 初始化查询优化器子系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                struct MetadataManager *metadata = (struct MetadataManager *)system->subsystems[SUBSYSTEM_METADATA].instance;
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
+                MetadataManager *metadata = (MetadataManager *)system_mgr->subsystems[MM_SUBSYSTEM_METADATA].instance;
                 void *optimizer = optimizer_create(config, metadata);
                 if (optimizer) {
-                    system_register_subsystem(system, SUBSYSTEM_OPTIMIZER, "Optimizer", optimizer);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_OPTIMIZER, "Optimizer", optimizer);
                 }
             }
             break;
-        case SUBSYSTEM_PROCEDURE:
+        case MM_SUBSYSTEM_PROCEDURE:
             {
                 // 初始化存储过程和触发器子系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                struct MetadataManager *metadata = (struct MetadataManager *)system->subsystems[SUBSYSTEM_METADATA].instance;
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
+                MetadataManager *metadata = (MetadataManager *)system_mgr->subsystems[MM_SUBSYSTEM_METADATA].instance;
                 void *procedure_manager = procedure_manager_create(config, metadata);
                 if (procedure_manager) {
-                    system_register_subsystem(system, SUBSYSTEM_PROCEDURE, "Procedure", procedure_manager);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_PROCEDURE, "Procedure", procedure_manager);
                 }
             }
             break;
-        case SUBSYSTEM_SECURITY:
+        case MM_SUBSYSTEM_SECURITY:
             {
                 // 初始化安全子系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
                 void *security_manager = security_init(config);
                 if (security_manager) {
-                    system_register_subsystem(system, SUBSYSTEM_SECURITY, "Security", security_manager);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_SECURITY, "Security", security_manager);
                 }
             }
             break;
-        case SUBSYSTEM_TRANSACTION:
+        case MM_SUBSYSTEM_TRANSACTION:
             {
                 // 初始化事务子系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
                 void *transaction_manager = transaction_manager_init(config);
                 if (transaction_manager) {
-                    system_register_subsystem(system, SUBSYSTEM_TRANSACTION, "Transaction", transaction_manager);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_TRANSACTION, "Transaction", transaction_manager);
                 }
             }
             break;
-        case SUBSYSTEM_NETWORK:
+        case MM_SUBSYSTEM_NETWORK:
             {
                 // 初始化网络子系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
                 void *network_server = network_server_init(config);
                 if (network_server) {
-                    system_register_subsystem(system, SUBSYSTEM_NETWORK, "Network", network_server);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_NETWORK, "Network", network_server);
                 }
             }
             break;
-        case SUBSYSTEM_REPLICATION:
+        case MM_SUBSYSTEM_REPLICATION:
             {
                 // 初始化复制子系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                void *network_server = system->subsystems[SUBSYSTEM_NETWORK].instance;
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
+                void *network_server = system_mgr->subsystems[MM_SUBSYSTEM_NETWORK].instance;
                 void *replication_manager = replication_manager_create(config, network_server);
                 if (replication_manager) {
-                    system_register_subsystem(system, SUBSYSTEM_REPLICATION, "Replication", replication_manager);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_REPLICATION, "Replication", replication_manager);
                 }
             }
             break;
-        case SUBSYSTEM_MONITORING:
+        case MM_SUBSYSTEM_MONITORING:
             {
                 // 初始化监控子系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
                 void *monitoring_manager = monitoring_init(config);
                 if (monitoring_manager) {
-                    system_register_subsystem(system, SUBSYSTEM_MONITORING, "Monitoring", monitoring_manager);
+                    mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_MONITORING, "Monitoring", monitoring_manager);
                 }
             }
             break;
-        case SUBSYSTEM_AUDIT:
+        case MM_SUBSYSTEM_AUDIT:
             {
                 // 初始化审计子系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                struct AuditConfig *audit_config = (struct AuditConfig *)malloc(sizeof(struct AuditConfig));
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
+                AuditConfig *audit_config = (AuditConfig *)malloc(sizeof(AuditConfig));
                 if (audit_config) {
                     audit_config->enabled = config_get_bool(config, "audit.enabled", true);
                     audit_config->log_dir = config_get_string(config, "audit.log_dir", "./audit");
                     audit_config->log_file = config_get_string(config, "audit.log_file", "audit");
-                    audit_config->log_format = config_get_int(config, "audit.log_format", 0); // AUDIT_FORMAT_TEXT
+                    audit_config->log_format = config_get_int(config, "audit.log_format", AUDIT_FORMAT_TEXT);
                     audit_config->max_log_size = config_get_int(config, "audit.max_log_size", 100);
                     audit_config->max_log_files = config_get_int(config, "audit.max_log_files", 10);
                     audit_config->rotate = config_get_bool(config, "audit.rotate", true);
@@ -426,20 +437,20 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
                     audit_config->min_query_length = config_get_int(config, "audit.min_query_length", 0);
                     audit_config->max_query_length = config_get_int(config, "audit.max_query_length", 10240);
                     
-                    void *audit_manager = audit_manager_init(audit_config);
+                    AuditManager *audit_manager = audit_manager_init(audit_config);
                     if (audit_manager) {
-                        system_register_subsystem(system, SUBSYSTEM_AUDIT, "Audit", audit_manager);
+                        mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_AUDIT, "Audit", audit_manager);
                     } else {
                         free(audit_config);
                     }
                 }
             }
             break;
-        case SUBSYSTEM_BACKUP:
+        case MM_SUBSYSTEM_BACKUP:
             {
                 // 初始化备份子系统
-                struct config_system *config = (struct config_system *)system->subsystems[SUBSYSTEM_CONFIG].instance;
-                struct BackupConfig *backup_config = (struct BackupConfig *)malloc(sizeof(struct BackupConfig));
+                config_system *config = (config_system *)system_mgr->subsystems[MM_SUBSYSTEM_CONFIG].instance;
+                BackupConfig *backup_config = (BackupConfig *)malloc(sizeof(BackupConfig));
                 if (backup_config) {
                     backup_config->backup_dir = config_get_string(config, "backup.backup_dir", "./backups");
                     backup_config->max_backups = config_get_int(config, "backup.max_backups", 10);
@@ -447,12 +458,12 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
                     backup_config->compression_level = config_get_string(config, "backup.compression_level", "6");
                     backup_config->encrypt = config_get_bool(config, "backup.encrypt", false);
                     backup_config->encryption_key = config_get_string(config, "backup.encryption_key", NULL);
-                    backup_config->backup_type = config_get_int(config, "backup.backup_type", 0); // BACKUP_TYPE_FULL
+                    backup_config->backup_type = config_get_int(config, "backup.backup_type", BACKUP_TYPE_FULL);
                     backup_config->schedule = config_get_string(config, "backup.schedule", NULL);
                     
-                    void *backup_manager = backup_manager_init(backup_config);
+                    BackupManager *backup_manager = backup_manager_init(backup_config);
                     if (backup_manager) {
-                        system_register_subsystem(system, SUBSYSTEM_BACKUP, "Backup", backup_manager);
+                        mm_system_register_subsystem(system_mgr, MM_SUBSYSTEM_BACKUP, "Backup", backup_manager);
                     } else {
                         free(backup_config);
                     }
@@ -470,12 +481,12 @@ bool system_init_subsystem(system_manager *system, subsystem_type type) {
 }
 
 // 启动子系统
-bool system_start_subsystem(system_manager *system, subsystem_type type) {
-    if (!system || !system->initialized || type >= SUBSYSTEM_MAX) {
+bool mm_system_start_subsystem(mm_system_manager *system_mgr, mm_subsystem_type type) {
+    if (!system_mgr || !system_mgr->initialized || type >= MM_SUBSYSTEM_MAX) {
         return false;
     }
     
-    subsystem *subsys = &system->subsystems[type];
+    mm_subsystem *subsys = &system_mgr->subsystems[type];
     if (!subsys->initialized) {
         return false;
     }
@@ -492,12 +503,12 @@ bool system_start_subsystem(system_manager *system, subsystem_type type) {
 }
 
 // 停止子系统
-bool system_stop_subsystem(system_manager *system, subsystem_type type) {
-    if (!system || !system->initialized || type >= SUBSYSTEM_MAX) {
+bool mm_system_stop_subsystem(mm_system_manager *system_mgr, mm_subsystem_type type) {
+    if (!system_mgr || !system_mgr->initialized || type >= MM_SUBSYSTEM_MAX) {
         return false;
     }
     
-    subsystem *subsys = &system->subsystems[type];
+    mm_subsystem *subsys = &system_mgr->subsystems[type];
     if (!subsys->started) {
         return true;
     }
@@ -510,18 +521,18 @@ bool system_stop_subsystem(system_manager *system, subsystem_type type) {
 }
 
 // 检查系统健康状态
-bool system_check_health(system_manager *system) {
-    if (!system || !system->initialized) {
+bool mm_system_check_health(mm_system_manager *system_mgr) {
+    if (!system_mgr || !system_mgr->initialized) {
         return false;
     }
     
-    if (system->state != SYSTEM_STATE_RUNNING) {
+    if (system_mgr->state != MM_SYSTEM_STATE_RUNNING) {
         return false;
     }
     
     // 检查所有子系统是否正常运行
-    for (int i = 0; i < SUBSYSTEM_MAX; i++) {
-        subsystem *subsys = &system->subsystems[i];
+    for (int i = 0; i < MM_SUBSYSTEM_MAX; i++) {
+        mm_subsystem *subsys = &system_mgr->subsystems[i];
         if (subsys->initialized && !subsys->started) {
             return false;
         }
@@ -531,21 +542,21 @@ bool system_check_health(system_manager *system) {
 }
 
 // 获取系统运行时间
-uint64_t system_get_uptime(system_manager *system) {
-    if (!system || !system->initialized || system->state != SYSTEM_STATE_RUNNING) {
+uint64_t mm_system_get_uptime(mm_system_manager *system_mgr) {
+    if (!system_mgr || !system_mgr->initialized || system_mgr->state != MM_SYSTEM_STATE_RUNNING) {
         return 0;
     }
     
-    return (uint64_t)time(NULL) - system->start_time;
+    return (uint64_t)time(NULL) - system_mgr->start_time;
 }
 
 // 处理系统信号
-void system_handle_signal(int signal) {
+void mm_system_handle_signal(int signal) {
     switch (signal) {
         case SIGINT:
         case SIGTERM:
-            if (global_system) {
-                system_shutdown(global_system);
+            if (global_mm_system) {
+                mm_system_shutdown(global_mm_system);
             }
             break;
         case SIGHUP:
