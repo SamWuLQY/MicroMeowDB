@@ -44,6 +44,15 @@ typedef struct {
     void *instance;
 } subsystem;
 
+// 系统配置结构
+typedef struct {
+    char *config_file;
+    char *data_dir;
+    char *log_dir;
+    bool daemonize;
+    char *pid_file;
+} system_config;
+
 // 系统结构
 typedef struct {
     system_state state;
@@ -53,15 +62,6 @@ typedef struct {
     bool initialized;
     const system_config *config;
 } system_manager;
-
-// 系统配置结构
-typedef struct {
-    char *config_file;
-    char *data_dir;
-    char *log_dir;
-    bool daemonize;
-    char *pid_file;
-} system_config;
 
 // 初始化系统管理器
 system_manager *system_init(const system_config *config);
