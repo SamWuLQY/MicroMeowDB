@@ -9,9 +9,9 @@
     #include <windows.h>
     #include <process.h>
     #define getpid _getpid
-    #define pid_t int
+    #define pause() Sleep(1000)  // Windows下的暂停实现
     
-    // Windows下模拟Linux信号
+    // 定义Linux信号常量
     #ifndef SIGHUP
         #define SIGHUP 1
     #endif
@@ -31,16 +31,8 @@
     #include <unistd.h>
     #include <signal.h>
     #include <sys/types.h>
+    #include <sys/wait.h>
 #endif
-
-// 系统状态枚举
-typedef enum {
-    SYSTEM_STATE_UNINITIALIZED,
-    SYSTEM_STATE_INITIALIZING,
-    SYSTEM_STATE_RUNNING,
-    SYSTEM_STATE_SHUTTING_DOWN,
-    SYSTEM_STATE_SHUTDOWN
-} system_state;
 
 // 子系统类型枚举 - 必须与system.c中的subsystem_names数组一致
 typedef enum {
@@ -64,13 +56,22 @@ typedef enum {
     SUBSYSTEM_MAX
 } subsystem_type;
 
-// 前置声明 - 解决循环依赖
+// 前置声明
 struct config_system;
 struct MetadataManager;
 struct MemoryPool;
 struct StorageEngineManager;
 struct AuditConfig;
 struct BackupConfig;
+
+// 系统状态枚举
+typedef enum {
+    SYSTEM_STATE_UNINITIALIZED,
+    SYSTEM_STATE_INITIALIZING,
+    SYSTEM_STATE_RUNNING,
+    SYSTEM_STATE_SHUTTING_DOWN,
+    SYSTEM_STATE_SHUTDOWN
+} system_state;
 
 // 子系统结构
 typedef struct {
@@ -90,7 +91,7 @@ typedef struct {
     char *pid_file;
 } system_config;
 
-// 系统结构 - 修正：添加了缺失的字段声明
+// 系统管理器结构
 typedef struct {
     system_state state;
     subsystem subsystems[SUBSYSTEM_MAX];
@@ -99,7 +100,7 @@ typedef struct {
     bool initialized;
     const system_config *config;
     
-    // 添加Windows需要的额外字段
+    // 平台特定字段
     #ifdef _WIN32
         HANDLE process_handle;
         DWORD windows_process_id;
@@ -107,6 +108,9 @@ typedef struct {
         pid_t process_id;
     #endif
 } system_manager;
+
+// 全局系统管理器实例 - 修改名称避免冲突
+extern system_manager *g_system_manager;
 
 // 函数声明
 #ifdef __cplusplus
