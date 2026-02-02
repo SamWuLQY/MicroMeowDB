@@ -4,7 +4,36 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-// 系统状态
+// 平台检测和兼容性处理
+#ifdef _WIN32
+    #include <windows.h>
+    #include <process.h>
+    #define getpid _getpid
+    #define pid_t int
+    
+    // Windows下模拟Linux信号
+    #ifndef SIGHUP
+        #define SIGHUP 1
+    #endif
+    #ifndef SIGUSR1
+        #define SIGUSR1 2
+    #endif
+    #ifndef SIGUSR2
+        #define SIGUSR2 3
+    #endif
+    #ifndef SIGTERM
+        #define SIGTERM 15
+    #endif
+    #ifndef SIGINT
+        #define SIGINT 2
+    #endif
+#else
+    #include <unistd.h>
+    #include <signal.h>
+    #include <sys/types.h>
+#endif
+
+// 系统状态枚举
 typedef enum {
     SYSTEM_STATE_UNINITIALIZED,
     SYSTEM_STATE_INITIALIZING,
@@ -13,7 +42,7 @@ typedef enum {
     SYSTEM_STATE_SHUTDOWN
 } system_state;
 
-// 子系统类型
+// 子系统类型枚举 - 必须与system.c中的subsystem_names数组一致
 typedef enum {
     SUBSYSTEM_CONFIG,
     SUBSYSTEM_ERROR,
@@ -35,6 +64,14 @@ typedef enum {
     SUBSYSTEM_MAX
 } subsystem_type;
 
+// 前置声明 - 解决循环依赖
+struct config_system;
+struct MetadataManager;
+struct MemoryPool;
+struct StorageEngineManager;
+struct AuditConfig;
+struct BackupConfig;
+
 // 子系统结构
 typedef struct {
     subsystem_type type;
@@ -53,7 +90,7 @@ typedef struct {
     char *pid_file;
 } system_config;
 
-// 系统结构
+// 系统结构 - 修正：添加了缺失的字段声明
 typedef struct {
     system_state state;
     subsystem subsystems[SUBSYSTEM_MAX];
@@ -61,7 +98,20 @@ typedef struct {
     uint64_t shutdown_time;
     bool initialized;
     const system_config *config;
+    
+    // 添加Windows需要的额外字段
+    #ifdef _WIN32
+        HANDLE process_handle;
+        DWORD windows_process_id;
+    #else
+        pid_t process_id;
+    #endif
 } system_manager;
+
+// 函数声明
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // 初始化系统管理器
 system_manager *system_init(const system_config *config);
@@ -101,5 +151,9 @@ uint64_t system_get_uptime(system_manager *system);
 
 // 处理系统信号
 void system_handle_signal(int signal);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // SYSTEM_H
